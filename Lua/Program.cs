@@ -24,6 +24,7 @@ public static class Program
                     {
                         Repl();
                     }
+
                     return 0;
                 },
                 _ => 1);
@@ -59,18 +60,11 @@ public static class Program
 
             var lexer = new Lexer(line);
 
-            try
-            {
-                var tokens = lexer.Lex();
+            var tokens = lexer.Lex(skipErrors: true);
 
-                foreach (var token in tokens)
-                {
-                    Console.WriteLine(token);
-                }
-            }
-            catch (LexerException exception)
+            foreach (var token in tokens)
             {
-                Console.WriteLine(exception.Message);
+                Console.WriteLine(token);
             }
         }
     }

@@ -44,7 +44,32 @@ public class Lexer
         _source = source;
     }
 
-    public IEnumerable<Token> Lex()
+    public IEnumerable<Token> Lex(bool skipErrors = false)
+    {
+        Token? currentToken = null;
+        do
+        {
+            try
+            {
+                currentToken = NextToken();
+            }
+            catch (LexerException exception)
+            {
+                Console.Error.WriteLine(exception.Message);
+                SkipToWhitespace();
+                if (skipErrors)
+                {
+                    continue;
+                }
+
+                throw;
+            }
+
+            yield return currentToken;
+        } while (currentToken?.Type != TokenType.Eof);
+    }
+
+    private Token NextToken()
     {
         while (!IsAtEnd)
         {
@@ -54,167 +79,115 @@ public class Lexer
             switch (c)
             {
                 case ';':
-                    yield return ExtractToken(TokenType.Semicolon);
-                    break;
+                    return ExtractToken(TokenType.Semicolon);
                 case ',':
-                    yield return ExtractToken(TokenType.Comma);
-                    break;
+                    return ExtractToken(TokenType.Comma);
                 case ':':
                     if (Match(':'))
                     {
-                        yield return ExtractToken(TokenType.ColonColon);
-                    }
-                    else
-                    {
-                        yield return ExtractToken(TokenType.Colon);
+                        return ExtractToken(TokenType.ColonColon);
                     }
 
-                    break;
+                    return ExtractToken(TokenType.Colon);
                 case '=':
                     if (Match('='))
                     {
-                        yield return ExtractToken(TokenType.EqualEqual);
-                    }
-                    else
-                    {
-                        yield return ExtractToken(TokenType.Equal);
+                        return ExtractToken(TokenType.EqualEqual);
                     }
 
-                    break;
+                    return ExtractToken(TokenType.Equal);
                 case '.':
                     if (Match('.'))
                     {
                         if (Match('.'))
                         {
-                            yield return ExtractToken(TokenType.DotDotDot);
+                            return ExtractToken(TokenType.DotDotDot);
                         }
-                        else
-                        {
-                            yield return ExtractToken(TokenType.DotDot);
-                        }
-                    }
-                    else
-                    {
-                        yield return ExtractToken(TokenType.Dot);
+
+                        return ExtractToken(TokenType.DotDot);
                     }
 
-                    break;
+                    return ExtractToken(TokenType.Dot);
                 case '+':
-                    yield return ExtractToken(TokenType.Plus);
-                    break;
+                    return ExtractToken(TokenType.Plus);
                 case '-':
-                    yield return ExtractToken(TokenType.Minus);
-                    break;
+                    return ExtractToken(TokenType.Minus);
                 case '*':
-                    yield return ExtractToken(TokenType.Star);
-                    break;
+                    return ExtractToken(TokenType.Star);
                 case '/':
                     if (Match('/'))
                     {
-                        yield return ExtractToken(TokenType.DoubleSlash);
-                    }
-                    else
-                    {
-                        yield return ExtractToken(TokenType.Slash);
+                        return ExtractToken(TokenType.DoubleSlash);
                     }
 
-                    break;
+                    return ExtractToken(TokenType.Slash);
                 case '^':
-                    yield return ExtractToken(TokenType.Caret);
-                    break;
+                    return ExtractToken(TokenType.Caret);
                 case '%':
-                    yield return ExtractToken(TokenType.Percent);
-                    break;
+                    return ExtractToken(TokenType.Percent);
                 case '&':
-                    yield return ExtractToken(TokenType.Ampersand);
-                    break;
+                    return ExtractToken(TokenType.Ampersand);
                 case '~':
                     if (Match('='))
                     {
-                        yield return ExtractToken(TokenType.NotEqual);
-                    }
-                    else
-                    {
-                        yield return ExtractToken(TokenType.Tilde);
+                        return ExtractToken(TokenType.NotEqual);
                     }
 
-                    break;
+                    return ExtractToken(TokenType.Tilde);
                 case '|':
-                    yield return ExtractToken(TokenType.Bar);
-                    break;
+                    return ExtractToken(TokenType.Bar);
                 case '#':
-                    yield return ExtractToken(TokenType.Hash);
-                    break;
+                    return ExtractToken(TokenType.Hash);
                 case '>':
                     if (Match('>'))
                     {
-                        yield return ExtractToken(TokenType.DoubleRightAngleBracket);
-                    }
-                    else
-                    {
-                        if (Match('='))
-                        {
-                            yield return ExtractToken(TokenType.GreaterEqual);
-                        }
-                        else
-                        {
-                            yield return ExtractToken(TokenType.Greater);
-                        }
+                        return ExtractToken(TokenType.DoubleRightAngleBracket);
                     }
 
-                    break;
+                    if (Match('='))
+                    {
+                        return ExtractToken(TokenType.GreaterEqual);
+                    }
+
+                    return ExtractToken(TokenType.Greater);
                 case '<':
                     if (Match('<'))
                     {
-                        yield return ExtractToken(TokenType.DoubleLeftAngleBracket);
-                    }
-                    else
-                    {
-                        if (Match('='))
-                        {
-                            yield return ExtractToken(TokenType.LessEqual);
-                        }
-                        else
-                        {
-                            yield return ExtractToken(TokenType.Less);
-                        }
+                        return ExtractToken(TokenType.DoubleLeftAngleBracket);
                     }
 
-                    break;
+                    if (Match('='))
+                    {
+                        return ExtractToken(TokenType.LessEqual);
+                    }
+
+                    return ExtractToken(TokenType.Less);
+
                 case '(':
-                    yield return ExtractToken(TokenType.LeftParenthesis);
-                    break;
+                    return ExtractToken(TokenType.LeftParenthesis);
                 case ')':
-                    yield return ExtractToken(TokenType.RightParenthesis);
-                    break;
+                    return ExtractToken(TokenType.RightParenthesis);
                 case '[':
                     if (Match('['))
                     {
-                        yield return LexLongString();
-                    }
-                    else if (Match('='))
-                    {
-                        yield return LexLongString(1);
-                    }
-                    else
-                    {
-                        yield return ExtractToken(TokenType.LeftBracket);
+                        return LexLongString();
                     }
 
-                    break;
+                    if (Match('='))
+                    {
+                        return LexLongString(1);
+                    }
+
+                    return ExtractToken(TokenType.LeftBracket);
                 case ']':
-                    yield return ExtractToken(TokenType.RightBracket);
-                    break;
+                    return ExtractToken(TokenType.RightBracket);
                 case '{':
-                    yield return ExtractToken(TokenType.LeftBrace);
-                    break;
+                    return ExtractToken(TokenType.LeftBrace);
                 case '}':
-                    yield return ExtractToken(TokenType.RightBrace);
-                    break;
+                    return ExtractToken(TokenType.RightBrace);
                 case '\'':
                 case '"':
-                    yield return LexShortString(c);
-                    break;
+                    return LexShortString(c);
                 default:
                     if (char.IsWhiteSpace(c))
                     {
@@ -223,22 +196,19 @@ public class Lexer
 
                     if (char.IsLetter(c))
                     {
-                        yield return LexIdentifier();
-                    }
-                    else if (char.IsDigit(c) || c == '_')
-                    {
-                        yield return LexNumber();
-                    }
-                    else
-                    {
-                        throw new LexerException($"Unexpected token: {CurrentChar}", _line, _col);
+                        return LexIdentifier();
                     }
 
-                    break;
+                    if (char.IsDigit(c) || c == '_')
+                    {
+                        return LexNumber();
+                    }
+
+                    throw new LexerException($"Unexpected token: {CurrentChar}", _line, _col);
             }
         }
 
-        yield return ExtractToken(TokenType.Eof);
+        return ExtractToken(TokenType.Eof);
     }
 
     private Token LexIdentifier()
@@ -352,6 +322,11 @@ public class Lexer
         return ExtractToken(TokenType.String, literal, withLexeme: true);
     }
 
+    private void SkipToWhitespace()
+    {
+        while (Match(c => !char.IsWhiteSpace(c))) {}
+    }
+
     private char? Advance(bool isSkipping = false)
     {
         if (IsAtEnd)
@@ -385,12 +360,17 @@ public class Lexer
 
     private bool Match(char expected)
     {
+        return Match(c => c == expected);
+    }
+
+    private bool Match(Predicate<char> predicate)
+    {
         if (IsAtEnd)
         {
             return false;
         }
-        
-        if (CurrentChar == expected)
+
+        if (predicate(CurrentChar))
         {
             Advance();
             return true;
