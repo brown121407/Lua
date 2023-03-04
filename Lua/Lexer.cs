@@ -24,16 +24,19 @@ public class Lexer
         {"for", TokenType.For},
         {"while", TokenType.While},
         {"repeat", TokenType.Repeat},
+        {"until", TokenType.Until},
         {"do", TokenType.Do},
         {"if", TokenType.If},
         {"then", TokenType.Then},
         {"elseif", TokenType.ElseIf},
+        {"else", TokenType.Else},
         {"end", TokenType.End},
         {"break", TokenType.Break},
         {"goto", TokenType.Goto},
         {"return", TokenType.Return},
         {"function", TokenType.Function},
         {"local", TokenType.Local},
+        {"in", TokenType.In}
     };
 
     public Lexer(string source)
@@ -222,7 +225,7 @@ public class Lexer
                     {
                         yield return LexIdentifier();
                     }
-                    else if (char.IsDigit(c))
+                    else if (char.IsDigit(c) || c == '_')
                     {
                         yield return LexNumber();
                     }
@@ -240,7 +243,7 @@ public class Lexer
 
     private Token LexIdentifier()
     {
-        while (!IsAtEnd && !char.IsWhiteSpace(CurrentChar))
+        while (!IsAtEnd && (char.IsLetterOrDigit(CurrentChar) || CurrentChar == '_'))
         {
             Advance();
         }
