@@ -111,6 +111,11 @@ public class Lexer
                 case '+':
                     return ExtractToken(TokenType.Plus);
                 case '-':
+                    if (Match('-'))
+                    {
+                        SkipComment();
+                        continue;
+                    }
                     return ExtractToken(TokenType.Minus);
                 case '*':
                     return ExtractToken(TokenType.Star);
@@ -194,12 +199,12 @@ public class Lexer
                         continue;
                     }
 
-                    if (char.IsLetter(c))
+                    if (char.IsLetter(c) || c == '_')
                     {
                         return LexIdentifier();
                     }
 
-                    if (char.IsDigit(c) || c == '_')
+                    if (char.IsDigit(c))
                     {
                         return LexNumber();
                     }
@@ -259,6 +264,10 @@ public class Lexer
             {
                 break;
             }
+            else if (escaped)
+            {
+                escaped = !escaped;
+            }
             Advance();
         }
 
@@ -298,15 +307,17 @@ public class Lexer
                 {
                     break;
                 }
-                else
-                {
-                    possiblyClosing = true;
-                    closingLevel = 0;
-                }
+
+                possiblyClosing = true;
+                closingLevel = 0;
             }
             else if (CurrentChar == '=' && possiblyClosing)
             {
                 closingLevel++;
+            }
+            else
+            {
+                possiblyClosing = false;
             }
 
             Advance();
@@ -320,6 +331,63 @@ public class Lexer
         var literal = _source.Substring(_start + 2 + level, _pos - 2 - level - (_start + 2 + level));
 
         return ExtractToken(TokenType.String, literal, withLexeme: true);
+    }
+    
+    private void SkipComment()
+    {
+        var level = 0;
+
+        if (Match('['))
+        {
+            while (Match('='))
+            {
+                level++;
+            }
+
+            if (Match('['))
+            {
+                var possiblyClosing = false;
+                var closingLevel = 0;
+                while (!IsAtEnd)
+                {
+                    if (CurrentChar == ']')
+                    {
+                        if (possiblyClosing && closingLevel == level)
+                        {
+                            break;
+                        }
+
+                        possiblyClosing = true;
+                        closingLevel = 0;
+                    }
+                    else if (CurrentChar == '=' && possiblyClosing)
+                    {
+                        closingLevel++;
+                    }
+                    else
+                    {
+                        possiblyClosing = false;
+                    }
+
+                    Advance();
+                }
+
+                Advance();
+            }
+            else
+            {
+                SkipShortComment();
+            }
+        }
+        else
+        {
+            SkipShortComment();
+        }
+    }
+
+    private void SkipShortComment()
+    {
+        while (Match(c => c != '\n')) {}
     }
 
     private void SkipToWhitespace()
@@ -351,11 +419,6 @@ public class Lexer
         }
 
         return _source[_pos++];
-    }
-
-    private char? Peek(int lookahead = 1)
-    {
-        return _pos + lookahead >= _source.Length ? null : _source[_pos + lookahead];
     }
 
     private bool Match(char expected)
