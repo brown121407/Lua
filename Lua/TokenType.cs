@@ -2,6 +2,8 @@ namespace Lua;
 
 public enum TokenType
 {
+    Eof,
+    
     Plus,
     Minus,
     Star,
@@ -37,7 +39,10 @@ public enum TokenType
     DoubleRightBracket,
     LeftBrace,
     RightBrace,
+    
     Identifier,
+    String,
+    Number,
 
     And,
     Or,

@@ -1,6 +1,6 @@
 namespace Lua;
 
-internal class Lexer
+public class Lexer
 {
     private readonly string _source;
     private int _start = 0;
@@ -46,7 +46,9 @@ internal class Lexer
         while (!IsAtEnd)
         {
             _start = _pos;
-            switch (CurrentChar)
+            var c = Advance(isSkipping: true) ?? throw new LexerException("Unexpected EOF", _line, _col);
+
+            switch (c)
             {
                 case ';':
                     yield return ExtractToken(TokenType.Semicolon);
@@ -183,9 +185,13 @@ internal class Lexer
                     yield return ExtractToken(TokenType.RightParenthesis);
                     break;
                 case '[':
-                    if (Match('[') || Match('='))
+                    if (Match('['))
                     {
-                        yield return LexString();
+                        yield return LexLongString();
+                    }
+                    else if (Match('='))
+                    {
+                        yield return LexLongString(1);
                     }
                     else
                     {
@@ -204,20 +210,19 @@ internal class Lexer
                     break;
                 case '\'':
                 case '"':
-                    yield return LexString();
+                    yield return LexShortString(c);
                     break;
                 default:
-                    if (char.IsWhiteSpace(CurrentChar))
+                    if (char.IsWhiteSpace(c))
                     {
-                        Advance(isSkipping: true);
                         continue;
                     }
 
-                    if (char.IsLetter(CurrentChar))
+                    if (char.IsLetter(c))
                     {
                         yield return LexIdentifier();
                     }
-                    else if (char.IsDigit(CurrentChar))
+                    else if (char.IsDigit(c))
                     {
                         yield return LexNumber();
                     }
@@ -228,9 +233,9 @@ internal class Lexer
 
                     break;
             }
-
-            Advance(isSkipping: true);
         }
+
+        yield return ExtractToken(TokenType.Eof);
     }
 
     private Token LexIdentifier()
@@ -245,19 +250,116 @@ internal class Lexer
 
     private Token LexNumber()
     {
-        throw new NotImplementedException();
+        while (!IsAtEnd && char.IsDigit(CurrentChar))
+        {
+            Advance();
+        }
+
+        if (Match('.'))
+        {
+            Eat(char.IsDigit);
+            while (!IsAtEnd && char.IsDigit(CurrentChar))
+            {
+                Advance();
+            }
+        }
+
+        var lexeme = _source.Substring(_start, _pos - _start);
+        if (double.TryParse(lexeme, out var literal))
+        {
+            return ExtractToken(TokenType.Number, literal, withLexeme: true);
+        }
+
+        throw new LexerException($"Failed to convert {lexeme} to a number", _line, _col);
     }
 
-    private Token LexString()
+    private Token LexShortString(char delimiter)
     {
-        throw new NotImplementedException();
+        var escaped = false;
+        while (!IsAtEnd)
+        {
+            if (CurrentChar == '\\')
+            {
+                escaped = true;
+            }
+            else if (CurrentChar == delimiter && !escaped)
+            {
+                break;
+            }
+            Advance();
+        }
+
+        if (!Match(delimiter))
+        {
+            throw new LexerException($"Expected {delimiter}", _line, _col);
+        }
+
+        var literal = _source.Substring(_start + 1, _pos - _start - 2);
+
+        return ExtractToken(TokenType.String, literal, withLexeme: true);
     }
 
-    private void Advance(bool isSkipping = false)
+    private Token LexLongString(int startingLevel = 0)
+    {
+        var level = startingLevel;
+        if (level > 0)
+        {
+            while (Match('='))
+            {
+                level++;
+            }
+            
+            if (!Match('['))
+            {
+                throw new LexerException("Expected [", _line, _pos);
+            }
+        }
+
+        var possiblyClosing = false;
+        var closingLevel = 0;
+        while (!IsAtEnd)
+        {
+            if (CurrentChar == ']')
+            {
+                if (possiblyClosing && closingLevel == level)
+                {
+                    break;
+                }
+                else
+                {
+                    possiblyClosing = true;
+                    closingLevel = 0;
+                }
+            }
+            else if (CurrentChar == '=' && possiblyClosing)
+            {
+                closingLevel++;
+            }
+
+            Advance();
+        }
+
+        if (!Match(']'))
+        {
+            throw new LexerException($"Expected ]", _line, _col);
+        }
+        
+        var literal = _source.Substring(_start + 2 + level, _pos - 2 - level - (_start + 2 + level));
+
+        return ExtractToken(TokenType.String, literal, withLexeme: true);
+    }
+
+    private char? Advance(bool isSkipping = false)
     {
         if (IsAtEnd)
         {
-            return;
+            return null;
+        }
+        
+        if (isSkipping)
+        {
+            _startLine = _line;
+            _startCol = _col;
         }
 
         if (CurrentChar == '\n')
@@ -270,13 +372,7 @@ internal class Lexer
             _col++;
         }
 
-        if (isSkipping)
-        {
-            _startLine = _line;
-            _startCol = _col;
-        }
-
-        _pos++;
+        return _source[_pos++];
     }
 
     private char? Peek(int lookahead = 1)
@@ -286,7 +382,12 @@ internal class Lexer
 
     private bool Match(char expected)
     {
-        if (Peek() == expected)
+        if (IsAtEnd)
+        {
+            return false;
+        }
+        
+        if (CurrentChar == expected)
         {
             Advance();
             return true;
@@ -295,7 +396,22 @@ internal class Lexer
         return false;
     }
 
-    private Token ExtractToken(TokenType type, bool withLexeme = false)
+    private void Eat(Predicate<char> predicate)
+    {
+        if (IsAtEnd)
+        {
+            throw new LexerException($"Unexpected EOF", _line, _col);
+        }
+
+        if (!predicate(CurrentChar))
+        {
+            throw new LexerException($"Unexpected {CurrentChar}", _line, _col);
+        }
+
+        Advance();
+    }
+    
+    private Token ExtractToken(TokenType type, object? literal = null, bool withLexeme = false)
     {
         var lexeme = withLexeme ? _source.Substring(_start, _pos - _start) : null;
         Token token;
@@ -303,11 +419,11 @@ internal class Lexer
         if (type == TokenType.Identifier && lexeme is not null && _reservedKeywords.ContainsKey(lexeme))
         {
             type = _reservedKeywords[lexeme];
-            token = new Token(type, null, _startLine, _startCol); // No reason to store lexeme for keywords
+            token = new Token(type, null, null, _startLine, _startCol); // No reason to store lexeme for keywords
         }
         else
         {
-            token = new Token(type, lexeme, _line, _startCol);
+            token = new Token(type, lexeme, literal, _line, _startCol);
         }
 
         _startLine = _line;
