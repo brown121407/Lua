@@ -5,13 +5,14 @@ public class Lexer
     private readonly string _source;
     private int _start = 0;
     private int _pos = 0;
-    private int _line = 0;
-    private int _col = 0;
+    private int _line = 1;
+    private int _col = 1;
     private int _startLine = 0;
     private int _startCol = 0;
 
     private bool IsAtEnd => _pos >= _source.Length;
     private char CurrentChar => _source[_pos];
+    private string CurrentLexeme => _source[_start.._pos];
 
     private readonly Dictionary<string, TokenType> _reservedKeywords = new()
     {
@@ -206,7 +207,7 @@ public class Lexer
 
                     if (char.IsDigit(c))
                     {
-                        return LexNumber();
+                        return LexNumber(c);
                     }
 
                     throw new LexerException($"Unexpected token: {CurrentChar}", _line, _col);
@@ -226,8 +227,13 @@ public class Lexer
         return ExtractToken(TokenType.Identifier, withLexeme: true);
     }
 
-    private Token LexNumber()
+    private Token LexNumber(char firstDigit)
     {
+        if (firstDigit == '0' && Match('x'))
+        {
+            return LexHexNumber();
+        }
+
         while (!IsAtEnd && char.IsDigit(CurrentChar))
         {
             Advance();
@@ -236,19 +242,36 @@ public class Lexer
         if (Match('.'))
         {
             Eat(char.IsDigit);
-            while (!IsAtEnd && char.IsDigit(CurrentChar))
-            {
-                Advance();
-            }
+            while (Match(char.IsDigit)) { }
         }
 
-        var lexeme = _source.Substring(_start, _pos - _start);
+        if (Match('e') || Match('E'))
+        {
+            _ = Match('+') || Match('-');
+            Eat(char.IsDigit);
+            while (Match(char.IsDigit)) { }
+        }
+
+        var lexeme = CurrentLexeme;
         if (double.TryParse(lexeme, out var literal))
         {
             return ExtractToken(TokenType.Number, literal, withLexeme: true);
         }
 
         throw new LexerException($"Failed to convert {lexeme} to a number", _line, _col);
+    }
+
+    private Token LexHexNumber()
+    {
+        while (Match(c => char.IsDigit(c) || "abcdefABCDEF".Contains(c))) { }
+
+        var lexeme = CurrentLexeme;
+        if (int.TryParse(lexeme[2..], System.Globalization.NumberStyles.HexNumber, null, out var literal))
+        {
+            return ExtractToken(TokenType.Number, literal, withLexeme: true);
+        }
+
+        throw new LexerException($"Faield to convert {lexeme} to a number", _line, _col);
     }
 
     private Token LexShortString(char delimiter)
@@ -411,7 +434,7 @@ public class Lexer
         if (CurrentChar == '\n')
         {
             _line++;
-            _col = 0;
+            _col = 1;
         }
         else
         {
@@ -459,7 +482,7 @@ public class Lexer
     
     private Token ExtractToken(TokenType type, object? literal = null, bool withLexeme = false)
     {
-        var lexeme = withLexeme ? _source.Substring(_start, _pos - _start) : null;
+        var lexeme = withLexeme ? _source[_start.._pos] : null;
         Token token;
 
         if (type == TokenType.Identifier && lexeme is not null && _reservedKeywords.ContainsKey(lexeme))
