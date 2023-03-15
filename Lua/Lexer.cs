@@ -7,8 +7,8 @@ public class Lexer
     private int _pos = 0;
     private int _line = 1;
     private int _col = 1;
-    private int _startLine = 0;
-    private int _startCol = 0;
+    private int _startLine = 1;
+    private int _startCol = 1;
 
     private bool IsAtEnd => _pos >= _source.Length;
     private char CurrentChar => _source[_pos];
@@ -112,7 +112,7 @@ public class Lexer
                 case '+':
                     return ExtractToken(TokenType.Plus);
                 case '-':
-                    if (Match('-'))
+                    if (Match('-', isSkipping: true))
                     {
                         SkipComment();
                         continue;
@@ -214,7 +214,7 @@ public class Lexer
             }
         }
 
-        return ExtractToken(TokenType.Eof);
+        return ExtractToken(TokenType.Eof, withLexeme: false);
     }
 
     private Token LexIdentifier()
@@ -224,7 +224,7 @@ public class Lexer
             Advance();
         }
 
-        return ExtractToken(TokenType.Identifier, withLexeme: true);
+        return ExtractToken(TokenType.Identifier);
     }
 
     private Token LexNumber(char firstDigit)
@@ -255,7 +255,7 @@ public class Lexer
         var lexeme = CurrentLexeme;
         if (double.TryParse(lexeme, out var literal))
         {
-            return ExtractToken(TokenType.Number, literal, withLexeme: true);
+            return ExtractToken(TokenType.Number, literal);
         }
 
         throw new LexerException($"Failed to convert {lexeme} to a number", _line, _col);
@@ -268,7 +268,7 @@ public class Lexer
         var lexeme = CurrentLexeme;
         if (int.TryParse(lexeme[2..], System.Globalization.NumberStyles.HexNumber, null, out var literal))
         {
-            return ExtractToken(TokenType.Number, literal, withLexeme: true);
+            return ExtractToken(TokenType.Number, literal);
         }
 
         throw new LexerException($"Faield to convert {lexeme} to a number", _line, _col);
@@ -301,7 +301,7 @@ public class Lexer
 
         var literal = _source.Substring(_start + 1, _pos - _start - 2);
 
-        return ExtractToken(TokenType.String, literal, withLexeme: true);
+        return ExtractToken(TokenType.String, literal);
     }
 
     private Token LexLongString(int startingLevel = 0)
@@ -313,7 +313,7 @@ public class Lexer
             {
                 level++;
             }
-            
+
             if (!Match('['))
             {
                 throw new LexerException("Expected [", _line, _pos);
@@ -350,24 +350,24 @@ public class Lexer
         {
             throw new LexerException($"Expected ]", _line, _col);
         }
-        
+
         var literal = _source.Substring(_start + 2 + level, _pos - 2 - level - (_start + 2 + level));
 
-        return ExtractToken(TokenType.String, literal, withLexeme: true);
+        return ExtractToken(TokenType.String, literal);
     }
-    
+
     private void SkipComment()
     {
         var level = 0;
 
-        if (Match('['))
+        if (Match('[', isSkipping: true))
         {
-            while (Match('='))
+            while (Match('=', isSkipping: true))
             {
                 level++;
             }
 
-            if (Match('['))
+            if (Match('[', isSkipping: true))
             {
                 var possiblyClosing = false;
                 var closingLevel = 0;
@@ -392,10 +392,10 @@ public class Lexer
                         possiblyClosing = false;
                     }
 
-                    Advance();
+                    Advance(isSkipping: true);
                 }
 
-                Advance();
+                Advance(isSkipping: true);
             }
             else
             {
@@ -406,16 +406,19 @@ public class Lexer
         {
             SkipShortComment();
         }
+
+        _startLine = _line;
+        _startCol = _col;
     }
 
     private void SkipShortComment()
     {
-        while (Match(c => c != '\n')) {}
+        while (Match(c => c != '\n', isSkipping: true)) {}
     }
 
     private void SkipToWhitespace()
     {
-        while (Match(c => !char.IsWhiteSpace(c))) {}
+        while (Match(c => !char.IsWhiteSpace(c), isSkipping: true)) {}
     }
 
     private char? Advance(bool isSkipping = false)
@@ -424,7 +427,7 @@ public class Lexer
         {
             return null;
         }
-        
+
         if (isSkipping)
         {
             _startLine = _line;
@@ -444,12 +447,12 @@ public class Lexer
         return _source[_pos++];
     }
 
-    private bool Match(char expected)
+    private bool Match(char expected, bool isSkipping = false)
     {
-        return Match(c => c == expected);
+        return Match(c => c == expected, isSkipping);
     }
 
-    private bool Match(Predicate<char> predicate)
+    private bool Match(Predicate<char> predicate, bool isSkipping = false)
     {
         if (IsAtEnd)
         {
@@ -458,7 +461,7 @@ public class Lexer
 
         if (predicate(CurrentChar))
         {
-            Advance();
+            Advance(isSkipping);
             return true;
         }
 
@@ -479,21 +482,18 @@ public class Lexer
 
         Advance();
     }
-    
-    private Token ExtractToken(TokenType type, object? literal = null, bool withLexeme = false)
+
+    private Token ExtractToken(TokenType type, object? literal = null, bool withLexeme = true)
     {
-        var lexeme = withLexeme ? _source[_start.._pos] : null;
+        var lexeme = _source[_start.._pos];
         Token token;
 
-        if (type == TokenType.Identifier && lexeme is not null && _reservedKeywords.ContainsKey(lexeme))
+        if (type == TokenType.Identifier && _reservedKeywords.ContainsKey(lexeme))
         {
             type = _reservedKeywords[lexeme];
-            token = new Token(type, null, null, _startLine, _startCol); // No reason to store lexeme for keywords
         }
-        else
-        {
-            token = new Token(type, lexeme, literal, _line, _startCol);
-        }
+
+        token = new Token(type, withLexeme ? lexeme : string.Empty, literal, _line, _startCol);
 
         _startLine = _line;
         _startCol = _col;
